@@ -1,0 +1,88 @@
+
+
+import pandas as pd
+import statsmodels.api as sm
+import pylab as pl
+import numpy as np
+import matplotlib as plt
+# 加载数据
+from sklearn.ensemble import RandomForestRegressor
+
+df = pd.read_csv(r"D:/python/python_models/cs-training.csv")
+describe=df.describe()
+
+
+process_df=df.ix[:,[6,1,2,3,4,5,7,8,9,10]]
+known=process_df[process_df.MonthlyIncome.notnull()].as_matrix()
+unknown=process_df[process_df.MonthlyIncome.isnull()].as_matrix()
+x=known[:,1:]
+y=known[:,0]
+rfr=RandomForestRegressor(random_state=0,n_estimators=200,max_depth=3,n_jobs=-1)
+rfr.fit(x,y)
+predicted=rfr.predict(unknown[:,1:]).round(0)
+print(predicted)
+df.loc[(df.MonthlyIncome.isnull()),'MonthlyIncome']=predicted
+
+cut1=pd.qcut(df['RevolvingUtilizationOfUnsecuredLines'],4,labels=False)
+cut2=pd.qcut(df['age'],8,labels=False)
+bin3=[-1,0,1,3,5,13]
+cut3=pd.cut(df['NumberOfTime30-59DaysPastDueNotWorse'],bin3,labels=False)
+cut4=pd.qcut(df['DebtRatio'],3,labels=False)
+cut5=pd.qcut(df['MonthlyIncome'],4,labels=False)
+cut6=pd.qcut(df['NumberOfOpenCreditLinesAndLoans'],4,labels=False)
+bins7=[-1,0,1,3,5,20]
+cut7=pd.cut(df['NumberOfTimes90DaysLate'],bins7,labels=False)
+bins8=[-1,0,1,2,3,33]
+cut8=pd.cut(df['NumberRealEstateLoansOrLines'],bins8,labels=False)
+bins9=[-1,0,1,3,12]
+cut9=pd.cut(df['NumberOfTime60-89DaysPastDueNotWorse'],bins9,labels=False)
+bins10=[-1,0,1,2,3,5,21]
+cut10=pd.cut(df['NumberOfDependents'],bins10,labels=False)
+
+
+# WOE
+rate=df['SeriousDlqin2yrs'].sum()/(df['SeriousDlqin2yrs'].count()-df['SeriousDlqin2yrs'].sum())
+
+def get_woe_data(cut):
+    grouped=df['SeriousDlqin2yrs'].groupby(cut,as_index=True).value_counts()
+    woe=np.log(pd.DataFrame(grouped).unstack().iloc[:,1]/pd.DataFrame(grouped).unstack().iloc[:,0]*rate)
+
+cut1_woe=get_woe_data(cut1)
+cut2_woe=get_woe_data(cut2)
+cut3_woe=get_woe_data(cut3)
+cut4_woe=get_woe_data(cut4)
+cut5_woe=get_woe_data(cut5)
+cut6_woe=get_woe_data(cut6)
+cut7_woe=get_woe_data(cut7)
+cut8_woe=get_woe_data(cut8)
+cut9_woe=get_woe_data(cut9)
+cut10_woe=get_woe_data(cut10)
+
+# WOE值替换
+def replace_data(cut,cut_woe):
+    a=[]
+    for i in cut.unique():
+        a.append(i)
+        a.sort()
+    for m in range(len(a)):
+        cut.replace(a[m],cut_woe.values[m],inplace=True)
+    return cut
+
+df['RevolvingUtilizationOfUnsecuredLines']=replace_data(cut1,cut1_woe)
+df['age']=replace_data(cut2,cut2_woe)
+df['NumberOfTime30-59DaysPastDueNotWorse']=replace_data(cut3,cut3_woe)
+df['NumberOfTime90DaysLate']=replace_data(cut7,cut7_woe)
+df['NumberOfTime60-89DaysPastDueNotWorse']=replace_data(cut9,cut9_woe)
+
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_curve, auc
+
+x=df.iloc[:,2:]
+y=df.iloc[:,1]
+x_train,x_test,y_train,y_test=train_test_split(x,y,test_size=0.4,random_state=0)
+
+# 模型训练
+model=LogisticRegression()
+clf=model.fit(x_train,y_train)
